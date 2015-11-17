@@ -3,6 +3,7 @@ from pyteomics.mzid import read
 from psme.peptide import Peptide
 from psme.psm import Psm
 from psme.peak_list import ScanReference
+import sys, re
 
 
 class MzIdLoader(object):
@@ -12,11 +13,26 @@ class MzIdLoader(object):
         self.scan_source_manager = scan_source_manager
 
     def load(self, f, source_statistic_names):
+        dbg_limit = 10
+        counter = 0
+        title_pat = '^.*\.([0-9]+)\.[0-9]$'
         psms = []
         for identification_result in read(f, retrieve_refs=True):
             scan_id = identification_result['spectrumID']
+            scan_num = None
+            spectrum_title = identification_result.get('spectrum title',None)
+            if spectrum_title:
+                m = re.match(title_pat,spectrum_title)
+                if m:
+                    scan_num = int(m.groups()[0])
             scan_source = self.scan_source_manager.match_by_name(identification_result['name'])
-            scan_reference = ScanReference(id=scan_id, source=scan_source)
+            if counter < dbg_limit:
+                print >> sys.stdout, "MzIdLoader %s" % identification_result
+            ## source, index=None, number=None, id=None, base_peak_mz=None)
+            scan_reference = ScanReference(id=scan_id, number=scan_num, source=scan_source)
+            if counter < dbg_limit:
+                print >> sys.stdout, "MzIdLoader scan %s\t%s\t%s\t%s\t%s" % ( scan_reference.id, scan_reference.index, scan_reference.number, scan_reference.base_peak_mz, scan_reference.source)
+            counter += 1
             for identification_item in identification_result['SpectrumIdentificationItem']:
                 psm = self._identification_to_psm(identification_item, scan_reference, source_statistic_names)
                 psms.append(psm)
@@ -31,6 +47,13 @@ class MzIdLoader(object):
         for source_statistic_name in source_statistic_names:
             source_statistic = identification_item.get(source_statistic_name, None)
             source_statistics[source_statistic_name] = source_statistic
+        for key in identification_item.keys():
+            if key == 'PeptideEvidenceRef':
+                source_statistic = identification_item.get(key, None)
+                source_statistics[key] = source_statistic
+            elif key not in source_statistic_names:
+                source_statistic = identification_item.get(key, None)
+                source_statistics[key] = source_statistic
         psm = Psm(scan_reference=scan_reference,
                   peptide=peptide,
                   source_statistics=source_statistics)

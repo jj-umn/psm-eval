@@ -1,5 +1,6 @@
 from .aggregates_matches import AggregatesMatches
 from .filters_peaks import FiltersPeaks
+from .filters_peaks import get_filter_type
 from .matches_ions import MatchesIons
 from .link import find_link_builder
 from psme.spectra_utils import tic
@@ -19,6 +20,29 @@ def build_column_provider(settings, column_type, options={}):
     options.update({'settings': settings})
     column_provider = column_provider_class(**options)
     return column_provider
+
+def get_column_title(column):
+  name = column.column_provider_name
+  ## NumPeaks, MatchesIons, AggregatesMatches, FiltersPeaks
+  ## AGGREGATE_ION_METHODS = ['count', 'count_longest_stretch', 'percent', 'count_missed', 'percent_missed', 'list_matches', 'list_misses']
+  ## AGGREGATE_PEAKS_METHODS = ['count', 'percent', 'count_missed', 'percent_missed']
+  ## FILTER_FACTORY_CLASSES = {
+  ##     "percent_tic": PercentTicFilterFactory,
+  ##     "percent_max_intensity": PercentMaxSpectrumIntensityFilterFactory,
+  ##     "quantile": QuantileFilterFactory,
+  ##     "mz_range_absolute": MzRangeFilterFactory,
+  ##     "mz_range_percent_bp": MzRangePercentBpFilterFactory,
+  ##     "intensity_range": IntensityRangeFilterFactory,
+  ## }
+  if isinstance(column,AggregatesMatches):
+    name = "%s_%s" % (name, column.aggregate_by)
+  if isinstance(column,MatchesIons) and column.ion_options:
+    name = "%s_%s" % (name, '_'.join(column.ion_options.get('series')))
+  if isinstance(column,FiltersPeaks):
+    for peak_filter_factory in column.peak_filter_factories:
+      name = "%s_%s" % (name,get_filter_type(peak_filter_factory))
+  return name
+
 
 COLUMN_PROVIDER_CLASSES = {}
 

@@ -129,3 +129,19 @@ FILTER_FACTORY_CLASSES = {
     "mz_range_percent_bp": MzRangePercentBpFilterFactory,
     "intensity_range": IntensityRangeFilterFactory,
 }
+
+def get_filter_type(peak_filter_factory):
+    if isinstance(peak_filter_factory,IntensityRangeFilterFactory):
+        name = 'intensity_range'
+    elif isinstance(peak_filter_factory,MzRangePercentBpFilterFactory):
+        name = 'mz_range_percent_bp'
+    elif isinstance(peak_filter_factory,MzRangeFilterFactory):
+        name = 'mz_range_absolute'
+    elif isinstance(peak_filter_factory,QuantileFilterFactory):
+        name = 'quantile'
+    elif isinstance(peak_filter_factory,PercentMaxSpectrumIntensityFilterFactory):
+        name = 'percent_max_intensity'
+    elif isinstance(peak_filter_factory,PercentTicFilterFactory):
+        name = 'percent_tic'
+    return name
+
