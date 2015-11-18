@@ -2,6 +2,7 @@ from pyteomics.mzml import read as mzml_read
 from re import search
 from os.path import basename
 from numpy import argmax
+import sys
 
 
 class ScanReference(object):
@@ -17,8 +18,9 @@ class ScanReference(object):
         SEARCH_ORDER = ['id', 'index', 'number']
         for field in SEARCH_ORDER:
             value = getattr(self, field, None)
-            if value:
-                return value == getattr(scan, field)
+            if value and value == getattr(scan, field):
+                return True
+        return False
 
 
 class ScanSourceManager(object):
@@ -33,6 +35,9 @@ class ScanSourceManager(object):
         else:
             for scan_source in self.scan_sources:
                 if scan_source.name == name:
+                    return scan_source
+            for scan_source in self.scan_sources:
+                if scan_source.alias and scan_source.alias == name:
                     return scan_source
             raise Exception("Could not find scan source matching name [%s]" % name)
 
@@ -57,15 +62,18 @@ class ScanSource(object):
             self.path = source_options.get("path")
             # Name and encoded id are optional.
             self.name = source_options.get("name", None)
+            self.alias = source_options.get("alias", None)
             self.encoded_id = source_options.get("encoded_id", None)
         else:
             path = source_options_or_path
             self.path = path
             self.name = None
+            self.alias = None
             self.encoded_id = None
         self.filename = basename(self.path)
         if not self.name:
             self.name = self.filename
+        print >> sys.stderr, "ScanSource source: %s name: %s alias: %s" % (self.path,self.name if self.name else  'none',self.alias if self.alias else 'none')
 
     def get_scans(self):
         #scan_sources = __load_scan_sources(settings)
