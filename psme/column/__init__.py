@@ -8,10 +8,11 @@ from psme.spectra_utils import tic
 
 def build_column_providers(settings):
     columns = []
-    for column_options in settings.get("columns"):
-        column_type = column_options["type"]
-        column = build_column_provider(settings, column_type, column_options)
-        columns.append(column)
+    if settings.get("columns")is not None:
+        for column_options in settings.get("columns"):
+            column_type = column_options["type"]
+            column = build_column_provider(settings, column_type, column_options)
+            columns.append(column)
     return columns
 
 

@@ -15,23 +15,25 @@ class MzIdLoader(object):
     def load(self, f, source_statistic_names):
         dbg_limit = 10
         counter = 0
-        title_pat = '^.*\.([0-9]+)\.[0-9]$'
+        title_patterns = [r'scan=(\d+)',r'^.*?(?:[.][0]*(\d+)){2}[.]\d+$']
         psms = []
         for identification_result in read(f, retrieve_refs=True):
             scan_id = identification_result['spectrumID']
             scan_num = None
             spectrum_title = identification_result.get('spectrum title',None)
             if spectrum_title:
-                m = re.match(title_pat,spectrum_title)
-                if m:
-                    scan_num = int(m.groups()[0])
+                for title_pat in title_patterns:
+                    m = re.search(title_pat,spectrum_title)
+                    if m:
+                        scan_num = int(m.groups()[0])
+                        break
             scan_source = self.scan_source_manager.match_by_name(identification_result['name'])
             if counter < dbg_limit:
-                print >> sys.stdout, "MzIdLoader %s" % identification_result
+                print >> sys.stderr, "MzIdLoader %s\n" % identification_result
             ## source, index=None, number=None, id=None, base_peak_mz=None)
             scan_reference = ScanReference(id=scan_id, number=scan_num, source=scan_source)
             if counter < dbg_limit:
-                print >> sys.stdout, "MzIdLoader scan %s\t%s\t%s\t%s\t%s" % ( scan_reference.id, scan_reference.index, scan_reference.number, scan_reference.base_peak_mz, scan_reference.source)
+                print >> sys.stderr, "MzIdLoader scan %s\t%s\t%s\t%s\t%s\n" % ( scan_reference.id, scan_reference.index, scan_reference.number, scan_reference.base_peak_mz, scan_reference.source.name)
             counter += 1
             for identification_item in identification_result['SpectrumIdentificationItem']:
                 psm = self._identification_to_psm(identification_item, scan_reference, source_statistic_names)

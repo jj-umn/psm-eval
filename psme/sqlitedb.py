@@ -125,8 +125,8 @@ CREATE TABLE Spectrum (
  lowMZ REAL,
  highMZ REAL,
  precursorScanNum INTEGER,
- precursorMZ REAL,
  precursorCharge INTEGER,
+ precursorMZ REAL,
  precursorIntensity REAL 
 )
 """
@@ -216,7 +216,7 @@ INDEX_DEFS = [ CREATE_DBSequence_Accession_INDEX, CREATE_Peptide_sequence_INDEX,
 TABLE_FIELDS = {\
 'Source':('pkid','name','format','spectrumIDFormat','location'),\
 'SpectraData':('pkid','name','format','spectrumIDFormat','location'),\
-'Spectrum':('pkid','id','title','acquisitionNum','msLevel','polarity','peaksCount','totIonCurrent','retentionTime','basePeakMZ','basePeakIntensity','collisionEnergy','ionisationEnergy','lowMZ','highMZ','precursorScanNum','precursorMZ','precursorCharge','precursorIntensity'),\
+'Spectrum':('pkid','id','title','acquisitionNum','msLevel','polarity','peaksCount','totIonCurrent','retentionTime','basePeakMZ','basePeakIntensity','collisionEnergy','ionisationEnergy','lowMZ','highMZ','precursorScanNum','precursorCharge','precursorMZ','precursorIntensity'),\
 'Peaks':('pkid','Spectrum_pkid','acquisitionNum','moz','intensity'),\
 'SearchDatabase':('pkid','name','format','numDatabaseSequences','numResidues','releaseDate','version','location'),\
 'DBSequence':('pkid','id','SearchDatabase_pkid','accession','description','length','sequence'),\
@@ -237,7 +237,7 @@ TABLE_FIELD_TYPES = {\
 'SearchDatabase' : {'pkid' : 'INTEGER','name' : 'TEXT','format' : 'TEXT','numDatabaseSequences' : 'INTEGER','numResidues' : 'INTEGER','releaseDate' : 'TEXT','version' : 'TEXT','location' : 'TEXT'},\
 'Source' : {'pkid' : 'INTEGER','name' : 'TEXT','format' : 'TEXT','spectrumIDFormat' : 'TEXT','location' : 'TEXT'},\
 'SpectraData' : {'pkid' : 'INTEGER','name' : 'TEXT','format' : 'TEXT','spectrumIDFormat' : 'TEXT','location' : 'TEXT'},\
-'Spectrum' : {'pkid' : 'INTEGER','id' : 'TEXT','title' : 'TEXT','acquisitionNum' : 'INTEGER','msLevel' : 'INTEGER','polarity' : 'INTEGER','peaksCount' : 'INTEGER','totIonCurrent' : 'REAL','retentionTime' : 'REAL','basePeakMZ' : 'REAL','basePeakIntensity' : 'REAL','collisionEnergy' : 'REAL','ionisationEnergy' : 'REAL','lowMZ' : 'REAL','highMZ' : 'REAL','precursorScanNum' : 'INTEGER','precursorMZ' : 'REAL','precursorCharge' : 'INTEGER','precursorIntensity' : 'REAL'},\
+'Spectrum' : {'pkid' : 'INTEGER','id' : 'TEXT','title' : 'TEXT','acquisitionNum' : 'INTEGER','msLevel' : 'INTEGER','polarity' : 'INTEGER','peaksCount' : 'INTEGER','totIonCurrent' : 'REAL','retentionTime' : 'REAL','basePeakMZ' : 'REAL','basePeakIntensity' : 'REAL','collisionEnergy' : 'REAL','ionisationEnergy' : 'REAL','lowMZ' : 'REAL','highMZ' : 'REAL','precursorScanNum' : 'INTEGER','precursorCharge' : 'INTEGER','precursorMZ' : 'REAL','precursorIntensity' : 'REAL'},\
 'SpectrumIdentification' : {'pkid' : 'INTEGER','Spectrum_pkid' : 'INTEGER','spectrum_id' : 'TEXT','acquisitionNum' : 'INTEGER','chargeState' : 'INTEGER','retentionTime' : 'REAL','rank' : 'INTEGER','passThreshold' : 'INTEGER','experimentalMassToCharge' : 'REAL','calculatedMassToCharge' : 'REAL'}\
 }
 
@@ -363,54 +363,83 @@ def getDSequenceID():
         pass
 
 def sqldb(settings,scan_source_manager,psm_manager,collected_names,collected_statistics,source_statistic_names):
-    print >> sys.stderr, "source_statistic_names: %s" % source_statistic_names
-    print >> sys.stderr, "collected_names: %s" % collected_names
-    print >> sys.stderr, "collected_statistics: %s" % collected_statistics
     sqlfile = settings.get('sqlitedb', None)
     if not sqlfile:
         return
+    print >> sys.stderr, "source_statistic_names: %s" % source_statistic_names
+    print >> sys.stderr, "collected_names: %s" % collected_names
+    print >> sys.stderr, "collected_statistics: %s" % collected_statistics
     create_db(sqlfile)
     scancnt = 0
+    scandbcnt = 0
     psmcnt = 0
     for scan in scan_source_manager.get_scans():
         scancnt += 1
-        Spectrum_pkid = insert_scan(scan)
+        #Spectrum_pkid = insert_scan(scan)
+        Spectrum_pkid = None
         for psm in psm_manager.psms_for_scan(scan):
+            if Spectrum_pkid is None:
+                Spectrum_pkid = insert_scan(scan)
+                scandbcnt +=1
             insert_psm(psm,Spectrum_pkid,collected_names,collected_statistics[psmcnt],source_statistic_names)
             psmcnt += 1
-    create_table_column_index('Spectrum',['acquisitionNum', 'msLevel', 'polarity', 'peaksCount', 'totIonCurrent', 'retentionTime', 'basePeakMZ', 'basePeakIntensity', 'collisionEnergy', 'ionisationEnergy', 'lowMZ', 'highMZ', 'precursorScanNum', 'precursorMZ', 'precursorCharge', 'precursorIntensity'])
+    print >> sys.stdout, "PSMs: %d Scans %d of %d" % (psmcnt,scandbcnt,scancnt)
+    create_table_column_index('Spectrum',['acquisitionNum', 'msLevel', 'polarity', 'peaksCount', 'totIonCurrent', 'retentionTime', 'basePeakMZ', 'basePeakIntensity', 'collisionEnergy', 'ionisationEnergy', 'lowMZ', 'highMZ', 'precursorScanNum', 'precursorCharge', 'precursorMZ', 'precursorIntensity'])
     scorefields = set(TABLE_FIELDS['Score']) - set(SCOREFILTER)
     create_table_column_index('Score',scorefields)
 
+# SourceRefs scan.source.name -> pkid 
+SourceRefs = dict()
+# ScanDicts [source.pkid] [scan.index] -> pkid
+ScanDicts = dict()
+def insert_sourcedb(scan):
+    #name = scan.source.get('name',None)
+    name = scan.source.name
+    pkid = SourceRefs.get(name,None)
+    if not pkid:
+        fileFormat = None
+        spectrumIDFormat = None
+        #location = scan.source.get('path',None)
+        location = scan.source.path
+        #Source(pkid,name,format,spectrumIDFormat,location)
+        values = (None,name,fileFormat,spectrumIDFormat,location)
+        pkid = insert_row('Source',values)
+        SourceRefs[name] = pkid
+        ScanDicts[pkid] = dict()
+    return pkid
 scan_cnt = 0
+dbg_scan_cnt = 0
 def insert_scan(scan):
     global scan_cnt
-    scan_cnt += 1
-    if scan_cnt < 2:
-        print >> sys.stdout, "scan:\t%s,%s,%s,%s,%s"% ( scan.id, scan.source.name, scan.index, scan.number, scan.base_peak_mz )
-    ## Source
-    ## Spectrum (pkid INTEGER PRIMARY KEY, id TEXT, acquisitionNum INTEGER, msLevel INTEGER, polarity INTEGER, peaksCount INTEGER, totIonCurrent REAL, retentionTime REAL, basePeakMZ REAL, basePeakIntensity REAL, collisionEnergy REAL, ionisationEnergy REAL, lowMZ REAL, highMZ REAL, precursorScanNum INTEGER, precursorMZ REAL, precursorCharge INTEGER, precursorIntensity REAL )
-    #Spectrum(pkid,     id, title, acquisitionNum, msLevel, polarity, peaksCount,         totIonCurrent, retentionTime, basePeakMZ,        basePeakIntensity, collisionEnergy, ionisationEnergy, lowMZ, highMZ, precursorScanNum, precursorMZ, precursorCharge, precursorIntensity )
-    mz_array = [x for x in scan.mz_array]
-    intensity_array = [x for x in scan.intensity_array]
-    values = (None,scan.id, scan.id, scan.number,    None,    None,     len(mz_array), None,          None,          scan.base_peak_mz, None,              None,            None,             None,  None,   None,             None,        None,            None )
-    if scan_cnt < 2:
-        print >> sys.stdout, "spec:\t%s"%  str(values)
-    Spectrum_pkid = insert_row('Spectrum',values)
-    ## Peaks
-    #Peaks   (pkid,     id,spectrum_pkid,acquisitionNum,          moz,           intensity)
-    values = (None,Spectrum_pkid,   scan.number,str(mz_array),str(intensity_array))
-    if scan_cnt < 2:
-        print >> sys.stdout, "peak:\t%s"% ( str(values) )
-        sys.stdout.flush()
-    pkid = insert_row('Peaks',values)
+    Spectrum_pkid = ScanDicts[insert_sourcedb(scan)].get(scan.index,None)
+    if Spectrum_pkid is None:
+        scan_cnt += 1
+        if scan_cnt < dbg_scan_cnt:
+            print >> sys.stdout, "scan:\t%s,%s,%s,%s,%s"% ( scan.id, scan.source.name, scan.index, scan.number, scan.base_peak_mz )
+        ## Source
+        ## Spectrum (pkid INTEGER PRIMARY KEY, id TEXT, acquisitionNum INTEGER, msLevel INTEGER, polarity INTEGER, peaksCount INTEGER, totIonCurrent REAL, retentionTime REAL, basePeakMZ REAL, basePeakIntensity REAL, collisionEnergy REAL, ionisationEnergy REAL, lowMZ REAL, highMZ REAL, precursorScanNum INTEGER, precursorCharge INTEGER, precursorMZ REAL, precursorIntensity REAL )
+        #Spectrum(pkid,     id, title, acquisitionNum, msLevel, polarity, peaksCount,         totIonCurrent, retentionTime, basePeakMZ,        basePeakIntensity, collisionEnergy, ionisationEnergy, lowMZ, highMZ, precursorScanNum, precursorCharge, precursorMZ, precursorIntensity )
+        mz_array = [x for x in scan.mz_array]
+        intensity_array = [x for x in scan.intensity_array]
+        values = (None,scan.id, scan.id, scan.number, scan.ms_level, None, len(mz_array), scan.total_ion_current, scan.retention_time, scan.base_peak_mz,  scan.base_peak_intensity,              None, None, None,  None,   scan.precursor_scan_num, scan.precursor_charge, scan.precursor_mz, scan.precursor_intensity )
+        if scan_cnt < dbg_scan_cnt:
+            print >> sys.stdout, "spec:\t%s"%  str(values)
+        Spectrum_pkid = insert_row('Spectrum',values)
+        ## Peaks
+        #Peaks   (pkid,     id,spectrum_pkid,acquisitionNum,          moz,           intensity)
+        values = (None,Spectrum_pkid,   scan.number,str(mz_array),str(intensity_array))
+        if scan_cnt < dbg_scan_cnt:
+            print >> sys.stdout, "peak:\t%s"% ( str(values) )
+            sys.stdout.flush()
+        pkid = insert_row('Peaks',values)
     return Spectrum_pkid
 
 psm_cnt = 0
+dbg_psm_cnt = 0
 def insert_psm(psm,Spectrum_pkid,collected_names,collected_statistics,source_statistic_names):
     global psm_cnt
     labeled_sequence = psm.peptide.labeled_sequence_parts
-    if psm_cnt < 0:
+    if psm_cnt < dbg_psm_cnt:
         print >> sys.stdout, "psm:\t%s,%s,( %s ) \tscores:\n %s\n %s\n %s\n" % ( psm.scan_reference.id, psm.peptide.sequence, str(labeled_sequence),psm.source_statistics,source_statistic_names,collected_statistics)
     psm_cnt += 1
     #print >> sys.stdout, "psm:\t%s,%s,( %s ) \tscores: %s" % ( psm.scan_reference.id, psm.peptide.sequence, str(labeled_sequence), str(psm.peptide.modifications), psm.source_statistics)
@@ -466,7 +495,7 @@ def insert_psm(psm,Spectrum_pkid,collected_names,collected_statistics,source_sta
     ## scores
     scorefields = (set(collected_names) | set(psm.source_statistics.keys())) - set(SCOREFILTER)
     newfields = scorefields - set(TABLE_FIELDS['Score'])
-    if psm_cnt < 0:
+    if psm_cnt < dbg_psm_cnt:
         print >> sys.stdout, "scorefields: %s  newfields: %s" % (str(scorefields),str(newfields))
     if len(newfields) > 0: 
        ## print >> sys.stdout, "source_statistics: %s\n" % (psm.source_statistics)
@@ -544,7 +573,7 @@ def insert_peptide(psm):
                     residues = residuesval
             #Modification(pkid,Peptide_pkid,location,residues,replacementResidue,name,avgMassDelta,monoisotopicMassDelta)
             values = (None,pkid,location,residues,replacementResidue,name,avgMassDelta,monoisotopicMassDelta)
-            pkid = insert_row('Modification',values)
+            Mod_pkid = insert_row('Modification',values)
             peptideRefs[labeled_sequence] = pkid
     return pkid
 
